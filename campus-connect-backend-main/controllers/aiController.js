@@ -371,14 +371,14 @@ const askAIWithVoice = async (req, res, next) => {
       return next(new Error('Voice file generation failed'));
     }
 
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', 'inline');
+    // Read file and convert to Base64
+    const audioBuffer = await fs.promises.readFile(audioPath);
+    const audioBase64 = audioBuffer.toString('base64');
+    const audioDataUri = `data:audio/mp3;base64,${audioBase64}`;
 
-    res.sendFile(audioPath, (err) => {
-      if (err) {
-        console.error('File send error:', err);
-        return next(new Error('Failed to send voice response'));
-      }
+    res.json({
+      answer: answer,
+      audio: audioDataUri
     });
 
   } catch (error) {
