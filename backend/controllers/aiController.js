@@ -1,245 +1,156 @@
 const fs = require('fs');
+const path = require('path');
 const Department = require('../models/Department');
 const Resource = require('../models/Resource');
 const { generateText } = require('../utils/geminiClient');
 const { textToSpeech } = require('../utils/voiceUtils');
 const { getRouteBetweenPoints } = require('../utils/navigationUtils');
 
-// Helper: Create natural voice-friendly responses
-const createVoiceResponse = {
-  greeting: (lang) => lang === 'hi'
-    ? 'नमस्ते! मैं MMMUT कैंपस AI हूँ। मैं आपकी कैसे मदद कर सकती हूँ?'
-    : 'Hello! I am MMMUT Campus AI. How can I help you today?',
-
-  offTopic: (lang) => lang === 'hi'
-    ? 'क्षमा करें, मैं केवल MMMUT कैंपस से जुड़े सवालों का जवाब दे सकती हूँ। जैसे विभाग की जानकारी, रास्ते, या नोट्स।'
-    : 'I apologize, but I can only help with MMMUT campus related questions, such as departments, directions, or study materials.',
-
-  navigation: (from, to, route, lang) => {
-    if (lang === 'hi') {
-      const steps = route.steps.slice(0, 3).map((s, i) => `${i + 1}. ${s}`).join('. फिर ');
-      return `${from} से ${to} जाने के लिए: ${route.summary}। ${steps}। यह लगभग ${route.duration} मिनट का रास्ता है।`;
-    }
-    const steps = route.steps.slice(0, 3).map((s, i) => `Step ${i + 1}: ${s}`).join('. Then ');
-    return `To go from ${from} to ${to}: ${route.summary}. ${steps}. This will take approximately ${route.duration} minutes.`;
+// --- 1. CAMPUS KNOWLEDGE BASE (Mock Data) ---
+const campusData = {
+  events: [
+    { name: "TechSrijan 2024", date: "25th Oct", venue: "MPH Hall", desc: "Annual Tech Fest" },
+    { name: "Alumni Meet", date: "10th Nov", venue: "Guest House", desc: "Reunion of 1990 batch" },
+    { name: "HackStorm", date: "Coming Soon", venue: "ITRC Lab", desc: "24-hour Hackathon" }
+  ],
+  messMenu: {
+    monday: "Aloo Paratha (Breakfast), Rice/Dal (Lunch), Roti/Sabzi (Dinner)",
+    tuesday: "Idli Sambar (Breakfast), Rajma Chawal (Lunch), Kheer (Dinner)",
+    today: "Puri Sabzi (Special Breakfast), Paneer Butter Masala (Dinner)"
   },
-
-  navigationFallback: (from, to, distance, lang) => lang === 'hi'
-    ? `${from} से ${to} की दूरी लगभग ${distance} मीटर है। कृपया कैंपस के रास्तों का उपयोग करें। आप किसी भी छात्र से भी रास्ता पूछ सकते हैं।`
-    : `The distance from ${from} to ${to} is approximately ${distance} meters. Please use the campus pathways. You can also ask any student for directions.`,
-
-  departmentLocation: (dept, lang) => {
-    if (lang === 'hi') {
-      const building = dept.building ? `${dept.building} में` : 'मुख्य कैंपस में';
-      const floor = dept.floor ? `, मंजिल ${dept.floor} पर` : '';
-      const contact = dept.contact?.phone ? ` संपर्क नंबर है ${dept.contact.phone}.` : '';
-      const hours = dept.visitingHours?.weekdays?.open
-        ? ` खुलने का समय ${dept.visitingHours.weekdays.open} से ${dept.visitingHours.weekdays.close} तक है.`
-        : '';
-      return `${dept.name} ${building}${floor} स्थित है।${contact}${hours}`;
-    }
-
-    const building = dept.building || 'main campus';
-    const floor = dept.floor ? `, on floor ${dept.floor}` : '';
-    const contact = dept.contact?.phone ? ` You can contact them at ${dept.contact.phone}.` : '';
-    const hours = dept.visitingHours?.weekdays?.open
-      ? ` They are open from ${dept.visitingHours.weekdays.open} to ${dept.visitingHours.weekdays.close} on weekdays.`
-      : '';
-    return `${dept.name} is located in ${building}${floor}.${contact}${hours}`;
-  },
-
-  studyMaterials: (deptName, count, lang) => lang === 'hi'
-    ? `${deptName ? deptName + ' के लिए ' : ''}${count} अध्ययन सामग्री उपलब्ध है। आप इन्हें स्टडी हब में देख सकते हैं।`
-    : `There ${count === 1 ? 'is' : 'are'} ${count} study material${count === 1 ? '' : 's'} available${deptName ? ' for ' + deptName : ''}. You can view them in the Study Hub.`,
-
-  noMaterials: (deptName, lang) => lang === 'hi'
-    ? `${deptName ? deptName + ' के लिए ' : ''}अभी कोई अध्ययन सामग्री उपलब्ध नहीं है। आप अपने नोट्स अपलोड कर सकते हैं।`
-    : `There are no study materials available${deptName ? ' for ' + deptName : ''} at the moment. You can upload your notes to help others.`,
-
-  notFound: (query, lang) => lang === 'hi'
-    ? `क्षमा करें, मुझे "${query}" के बारे में जानकारी नहीं मिली। कृपया विभाग का पूरा नाम बताएं।`
-    : `I'm sorry, I couldn't find information about "${query}". Please provide the full department name.`
+  buses: [
+    { route: "City to Campus", time: "8:00 AM", stop: "Golghar" },
+    { route: "Campus to City", time: "5:00 PM", stop: "Main Gate" }
+  ]
 };
 
-// TEXT AI - UNCHANGED (your original code)
+// --- 2. RESPONSE BUILDER (Helper for Dual Output) ---
+const responseBuilder = {
+  greeting: (lang) => ({
+    speech: lang === 'hi'
+      ? 'नमस्ते! मैं MMMUT कैंपस AI हूँ। मैं विभागों, रास्तों, इवेंट्स और मेस के बारे में बता सकती हूँ।'
+      : 'Hello! I am MMMUT Campus AI. I can help with Departments, Navigation, Events, and Mess Menu.',
+    display: lang === 'hi'
+      ? '👋 **नमस्ते!** मैं MMMUT कैंपस AI हूँ।\nमैं **विभागों**, **रास्तों**, **इवेंट्स** और **मेस** के साथ आपकी मदद कर सकती हूँ।'
+      : '👋 **Hello!** I am MMMUT Campus AI.\nI can help you with **Departments**, **Navigation**, **Events**, **Mess Menu**, and **Transport**.'
+  }),
+
+  offTopic: (lang) => ({
+    speech: lang === 'hi'
+      ? 'क्षमा करें, मैं केवल कैंपस से जुड़े सवालों का जवाब दे सकती हूँ।'
+      : 'I apologize, but I can only help with MMMUT campus related questions.',
+    display: lang === 'hi'
+      ? '🚫 **विषय से बाहर**\nमैं केवल MMMUT कैंपस (विभाग, रास्ते, नोट्स) के बारे में बात कर सकती हूँ।'
+      : '🚫 **Off Topic**\nI can only help with MMMUT campus related questions (Departments, Navigation, Study Materials).'
+  }),
+
+  // NEW: Events Response
+  events: (events) => {
+    const list = events.map(e => `📅 **${e.name}**\n📍 ${e.venue} | 🗓️ ${e.date}`).join('\n\n');
+    return {
+      speech: `There are ${events.length} upcoming events, including ${events[0].name}.`,
+      display: `🎉 **Upcoming Campus Events:**\n\n${list}`
+    };
+  },
+
+  // NEW: Mess Menu Response
+  mess: (menu) => ({
+    speech: "Today's special is Puri Sabzi for breakfast and Paneer for dinner.",
+    display: `🍽️ **Today's Mess Menu:**\n\n${menu}\n\n*(Standard Menu applied for other days)*`
+  }),
+
+  // NEW: Bus Schedule Response
+  bus: (buses) => {
+    const list = buses.map(b => `🚌 **${b.route}**: ${b.time} at ${b.stop}`).join('\n');
+    return {
+      speech: "The morning bus leaves at 8 AM from Golghar, and the evening bus leaves at 5 PM.",
+      display: `🚌 **Bus Schedule:**\n\n${list}`
+    };
+  },
+
+  navigation: (from, to, route, lang) => {
+    const mapUrl = `https://www.google.com/maps/dir/?api=1&origin=${from.latitude},${from.longitude}&destination=${to.latitude},${to.longitude}&travelmode=walking`;
+    if (lang === 'hi') {
+      return {
+        speech: `${from.name} से ${to.name} जाने के लिए: ${route.summary}। यह लगभग ${route.duration} मिनट का रास्ता है।`,
+        display: `🚶 **${from.name}** ➝ **${to.name}**\n\n${route.summary}।\n⏳ समय: ${route.duration} मिनट\n\n🔗 **[गूगल मैप्स पर रास्ता देखें](${mapUrl})**`
+      };
+    }
+    return {
+      speech: `To go from ${from.name} to ${to.name}: ${route.summary}. This will take approximately ${route.duration} minutes.`,
+      display: `🚶 **From ${from.name} to ${to.name}**\n\n${route.summary}.\n⏳ Time: ~${route.duration} mins\n\n🔗 **[Open Route in Google Maps](${mapUrl})**`
+    };
+  },
+
+  navigationFallback: (from, to, distance, lang) => {
+    const mapUrl = `https://www.google.com/maps/search/?api=1&query=${to.latitude},${to.longitude}`;
+    if (lang === 'hi') {
+      return {
+        speech: `${from.name} से ${to.name} की दूरी लगभग ${distance} मीटर है।`,
+        display: `📏 दूरी: ${distance} मीटर\n\n🔗 **[मैप पर देखें](${mapUrl})**`
+      };
+    }
+    return {
+      speech: `The distance from ${from.name} to ${to.name} is approximately ${distance} meters.`,
+      display: `📏 Distance: ${distance} meters\n\n🔗 **[View Destination on Map](${mapUrl})**`
+    };
+  },
+
+  departmentLocation: (dept, lang) => {
+    const mapUrl = dept.mapLink || `https://www.google.com/maps/search/?api=1&query=${dept.latitude},${dept.longitude}`;
+    const contact = dept.contact?.phone || 'N/A';
+    const hod = dept.hod?.name || 'N/A';
+    
+    if (lang === 'hi') {
+      const building = dept.building ? `${dept.building} में` : 'मुख्य कैंपस में';
+      return {
+        speech: `${dept.name}, ${building} स्थित है।`,
+        display: `📍 **${dept.name}**\n🏢 **स्थान:** ${dept.building}\n👤 **HOD:** ${hod}\n📞 **संपर्क:** ${contact}\n\n🗺️ **[लोकेशन मैप देखें](${mapUrl})**`
+      };
+    }
+    const building = dept.building || 'Main Campus';
+    return {
+      speech: `${dept.name} is located in ${building}.`,
+      display: `📍 **${dept.name}**\n🏢 **Location:** ${building}\n👤 **HOD:** ${hod}\n📞 **Contact:** ${contact}\n\n🗺️ **[View on Map](${mapUrl})**`
+    };
+  },
+
+  studyMaterials: (deptName, count, resources, lang) => {
+    const links = resources.map(r => `📄 **[${r.title}](${r.fileUrl})**`).join('\n');
+    if (lang === 'hi') {
+      return {
+        speech: `${deptName} के लिए ${count} नोट्स मिले हैं।`,
+        display: `📚 **${deptName} अध्ययन सामग्री (${count})**:\n\n${links}`
+      };
+    }
+    return {
+      speech: `I found ${count} study materials for ${deptName}.`,
+      display: `📚 **${deptName} Study Materials (${count})**:\n\n${links}`
+    };
+  },
+
+  noMaterials: (deptName, lang) => ({
+    speech: lang === 'hi' ? `अभी ${deptName} के लिए कोई नोट्स उपलब्ध नहीं हैं।` : `No study materials found for ${deptName} at the moment.`,
+    display: lang === 'hi' ? `❌ **${deptName}** के लिए कोई नोट्स नहीं मिले।` : `❌ No study materials found for **${deptName}**.`
+  }),
+
+  notFound: (query, lang) => ({
+    speech: lang === 'hi' ? `क्षमा करें, मुझे ${query} नहीं मिला।` : `I'm sorry, I couldn't find ${query}.`,
+    display: lang === 'hi' ? `❌ **"${query}"** नहीं मिला।` : `❌ I couldn't find **"${query}"**.`
+  })
+};
+
+// --- 3. TEXT API ---
 const askAI = async (req, res, next) => {
   try {
     const { qry } = req.body;
-    if (!qry || typeof qry !== 'string') {
-      return next(new Error('Please ask a question.'));
-    }
-
-    const lower = qry.toLowerCase().trim();
-
-    // === OFF-TOPIC REJECTION: ONLY IF ENTIRE QUERY MATCHES ===
-    const offTopicPatterns = [
-      /^weather$/i,
-      /^news$/i,
-      /^stock$/i,
-      /^movie$/i,
-      /^song$/i,
-      /^joke$/i,
-      /^elon musk$/i,
-      /^chatgpt$/i,
-      /^who are you$/i,
-      /^hello$/i,
-      /^hi$/i,
-      /^bye$/i,
-      /^thank you$/i,
-      /^love$/i,
-      /^date$/i,
-      /^time$/i,
-      /^capital$/i,
-      /^president$/i,
-      /^prime minister$/i
-    ];
-
-    const isOffTopic = offTopicPatterns.some(pattern => pattern.test(lower));
-    if (isOffTopic) {
-      return res.json({
-        answer: `I help with **MMMUT campus only** — departments, navigation, and study materials.\n\nTry:\n• "Where is CSE?"\n• "Give me Civil notes"\n• "Library to CSE"`
-      });
-    }
-
-    // === 1. NAVIGATION: FLEXIBLE NATURAL LANGUAGE MATCHING ===
-    const navPatterns = [
-      /(?:from )?([a-zA-Z\s]+?)\s+(?:to|->)\s+([a-zA-Z\s]+?)(?:\?|$)/i,
-      /(?:how to go|directions|route|navigate)\s+(?:from )?([a-zA-Z\s]+?)\s+(?:to|->)\s+([a-zA-Z\s]+?)(?:\?|$)/i,
-      /from\s+([a-zA-Z\s]+?)\s+to\s+([a-zA-Z\s]+?)(?:\?|$)/i
-    ];
-
-    let from = null, to = null;
-    for (const pattern of navPatterns) {
-      const match = lower.match(pattern);
-      if (match) {
-        from = match[1].trim();
-        to = match[2].trim();
-        break;
-      }
-    }
-
-    if (from && to) {
-      let fromDept, toDept;
-      try {
-        fromDept = await Department.findOne({
-          $or: [{ code: from.toUpperCase() }, { name: { $regex: `^${from}$`, $options: 'i' } }]
-        });
-        toDept = await Department.findOne({
-          $or: [{ code: to.toUpperCase() }, { name: { $regex: `^${to}$`, $options: 'i' } }]
-        });
-      } catch (dbError) {
-        console.warn("DB Error (Navigation):", dbError.message);
-        // Fallthrough to Gemini if DB fails
-      }
-
-      if (!fromDept || !toDept) {
-        // If DB failed or departments not found, let Gemini handle it generically later or return generic msg
-        // For now, let's just fall through to Gemini if we can't do exact nav
-        // But to keep logic simple, we'll just check if we have data:
-      }
-
-      if (fromDept && toDept) {
-        // ... execute navigation logic ...
-      } else {
-        // Either DB down or not found. 
-        // We can't do precise nav without DB coords. 
-        // Let's Skip to Gemini Fallback.
-      }
-
-      try {
-        const route = await getRouteBetweenPoints(
-          fromDept.latitude, fromDept.longitude,
-          toDept.latitude, toDept.longitude
-        );
-
-        const steps = route.steps.map((step, i) => `Step ${i + 1}: ${step}`).join('\n');
-        const answer = `From **${fromDept.name}** to **${toDept.name}**: ${route.summary}\n\n${steps}`;
-        return res.json({ answer });
-      } catch (routeError) {
-        const approxDist = Math.round(Math.sqrt(
-          Math.pow(toDept.latitude - fromDept.latitude, 2) +
-          Math.pow(toDept.longitude - fromDept.longitude, 2)
-        ) * 111000);
-        return res.json({
-          answer: `Route from **${fromDept.name}** to **${toDept.name}** unavailable.\n\nApproximate: ${approxDist} meters. Walk campus paths.`
-        });
-      }
-    }
-
-    // === 2. DEPARTMENT LOCATION ===
-    const deptKeywords = /where|location|find|कहा|department|dept|विभाग/i;
-    if (deptKeywords.test(lower)) {
-      let name = '';
-
-      const codeMatch = lower.match(/\b(cse|ce|ee|me|ece|it|che|lib|can|adm)\b/i);
-      if (codeMatch) {
-        name = codeMatch[1];
-      } else {
-        const nameMatch = lower.match(/(?:where is|find|location of)\s+(.+?)(?:\?|$)/i);
-        if (nameMatch) {
-          name = nameMatch[1].trim();
-        } else {
-          name = lower.replace(/where|is|location|find|department|dept|the/gi, '').trim();
-        }
-      }
-
-      if (name.length < 2) {
-        return res.json({ answer: "Please specify a department name, like 'CSE' or 'Civil'." });
-      }
-
-      const dept = await Department.findOne({
-        $or: [
-          { code: name.toUpperCase() },
-          { name: { $regex: name, $options: 'i' } }
-        ]
-      });
-
-      if (dept) {
-        return res.json({
-          answer: `**${dept.name}** is located in **${dept.building || 'Main Campus'}** ${dept.floor ? `(Floor ${dept.floor})` : ''}.\n\nCoordinates: (${dept.latitude}, ${dept.longitude})\n\n${dept.mapLink ? `🗺️ Map: ${dept.mapLink}` : ''}`
-        });
-      } else {
-        return res.json({
-          answer: `I couldn't find **${name}** on campus.\n\nTry:\n• "Where is CSE?"\n• "Find Civil department"\n• "Location of Library"`
-        });
-      }
-    }
-
-    // === 3. STUDY MATERIALS ===
-    const studyKeywords = /notes|study|material|pdf|नोट्स|पढ़ाई|resources|resource/i;
-    if (studyKeywords.test(lower)) {
-      const deptMatch = lower.match(/(cse|civil|mechanical|electrical|ece|it|architecture|सीएसई|सिविल|मैकेनिकल)/i);
-      const dept = deptMatch ? deptMatch[0] : null;
-
-      const filter = dept ? {
-        $or: [
-          { department: { $regex: dept, $options: 'i' } },
-          { department: { $regex: `^${dept}$`, $options: 'i' } }
-        ]
-      } : {};
-      const resources = await Resource.find(filter).limit(3).sort({ createdAt: -1 });
-
-      if (resources.length > 0) {
-        const list = resources.map(r => `• [${r.title}](${r.fileUrl})`).join('\n');
-        const deptName = dept ? ` for **${dept.toUpperCase()}**` : '';
-        return res.json({ answer: `Here are study materials${deptName}:\n${list}` });
-      } else {
-        const deptName = dept ? ` for **${dept.toUpperCase()}**` : '';
-        return res.json({ answer: `No study materials found${deptName}.\nCheck **StudyHub** or try another department.` });
-      }
-    }
-
-    // === 4. GEMINI FALLBACK ===
-    const prompt = `You are MMMUT Campus AI. Answer in 1-2 short sentences. Query: "${qry}"`;
-    const answer = await generateText(prompt);
-    return res.json({ answer });
-
-  } catch (error) {
-    next(error);
-  }
+    if (!qry) return next(new Error('Please ask a question.'));
+    const answer = await generateText(`Answer this about MMMUT: ${qry}`);
+    res.json({ answer });
+  } catch (error) { next(error); }
 };
 
-// IMPROVED VOICE AI - WITH GTTS (FREE)
+// --- 4. VOICE API (MAIN LOGIC) ---
 const askAIWithVoice = async (req, res, next) => {
   try {
     const { qry } = req.body;
@@ -247,138 +158,94 @@ const askAIWithVoice = async (req, res, next) => {
 
     const lower = qry.toLowerCase().trim();
     const isHindi = /है|कहा|कहां|विभाग|नोट्स|लाइब्रेरी|कैंटीन|हिंदी|हिन्दी|से|को|के/.test(qry);
-    let answer = '';
-    let lang = isHindi ? 'hi' : 'en';
+    const lang = isHindi ? 'hi' : 'en';
 
-    // === GREETING ===
+    let response = { speech: '', display: '' };
+
+    // 1. GREETING
     if (/^(hello|hi|hey|namaste|नमस्ते|नमस्कार)$/i.test(lower)) {
-      answer = createVoiceResponse.greeting(lang);
+        response = responseBuilder.greeting(lang);
     }
-    // === OFF-TOPIC: ONLY FULL MATCHES ===
-    else if ([
-      /^weather$/i, /^news$/i, /^movie$/i, /^joke$/i, /^song$/i,
-      /^elon musk$/i, /^chatgpt$/i, /^who are you$/i, /^bye$/i,
-      /^thank you$/i, /^thanks$/i, /^love$/i, /^date$/i, /^time$/i
-    ].some(p => p.test(lower))) {
-      answer = createVoiceResponse.offTopic(lang);
+    // 2. OFF-TOPIC
+    else if ([/^weather$/i, /^news$/i, /^movie$/i, /^song$/i, /^chatgpt$/i].some(p => p.test(lower))) {
+        response = responseBuilder.offTopic(lang);
     }
-    // === NAVIGATION ===
-    else {
-      const navPatterns = [
-        /(?:from |से )?([a-zA-Z\s]+?)\s+(?:to|->|से)\s+([a-zA-Z\s]+?)(?:\?|$)/i,
-        /(?:how to go|directions|route|navigate|कैसे जाएं|रास्ता)\s+(?:from |से )?([a-zA-Z\s]+?)\s+(?:to|->|तक)\s+([a-zA-Z\s]+?)(?:\?|$)/i,
-        /from\s+([a-zA-Z\s]+?)\s+to\s+([a-zA-Z\s]+?)(?:\?|$)/i
-      ];
+    // 3. EVENTS (New)
+    else if (/event|function|fest|hackathon|seminar/i.test(lower)) {
+        response = responseBuilder.events(campusData.events);
+    }
+    // 4. MESS MENU (New)
+    else if (/mess|food|lunch|dinner|breakfast|menu|khana/i.test(lower)) {
+        response = responseBuilder.mess(campusData.messMenu.today);
+    }
+    // 5. BUS SCHEDULE (New)
+    else if (/bus|transport|vehicle|schedule|timing/i.test(lower)) {
+        response = responseBuilder.bus(campusData.buses);
+    }
+    // 6. NAVIGATION
+    else if (/(?:from|से)\s+(.+?)\s+(?:to|तक)\s+(.+?)(?:\?|$)/i.test(lower)) {
+        const navMatch = lower.match(/(?:from|से)\s+([a-zA-Z0-9\s]+)\s+(?:to|तक)\s+([a-zA-Z0-9\s]+)/i);
+        if (navMatch) {
+            const fromName = navMatch[1].trim(); 
+            const toName = navMatch[2].trim();
+            const fromDept = await Department.findOne({ $or: [{ code: fromName.toUpperCase() }, { name: { $regex: fromName, $options: 'i' } }] });
+            const toDept = await Department.findOne({ $or: [{ code: toName.toUpperCase() }, { name: { $regex: toName, $options: 'i' } }] });
 
-      let from = null, to = null;
-      for (const pattern of navPatterns) {
-        const match = lower.match(pattern);
-        if (match) {
-          from = match[1].trim();
-          to = match[2].trim();
-          break;
+            if (fromDept && toDept) {
+                try {
+                    const route = await getRouteBetweenPoints(fromDept.latitude, fromDept.longitude, toDept.latitude, toDept.longitude);
+                    response = responseBuilder.navigation(fromDept, toDept, route, lang);
+                } catch (e) {
+                    const dist = Math.round(Math.sqrt(Math.pow(toDept.latitude-fromDept.latitude,2) + Math.pow(toDept.longitude-fromDept.longitude,2)) * 111000);
+                    response = responseBuilder.navigationFallback(fromDept, toDept, dist, lang);
+                }
+            } else {
+                response = responseBuilder.notFound(fromDept ? toName : fromName, lang);
+            }
         }
-      }
-
-      if (from && to) {
-        let fromDept, toDept;
-        try {
-          fromDept = await Department.findOne({ $or: [{ code: from.toUpperCase() }, { name: { $regex: `^${from}$`, $options: 'i' } }] });
-          toDept = await Department.findOne({ $or: [{ code: to.toUpperCase() }, { name: { $regex: `^${to}$`, $options: 'i' } }] });
-        } catch (e) { console.warn("DB Error:", e.message); }
-
-        if (!fromDept || !toDept) {
-          answer = createVoiceResponse.notFound(!fromDept ? from : to, lang);
+    }
+    // 7. LOCATION
+    else if (/where|location|find|कहा|department|dept|विभाग/i.test(lower)) {
+        let name = lower.replace(/where|is|location|find|department|dept|the|of|located|situated|कहा|है|\?/gi, '').trim();
+        const dept = await Department.findOne({
+            $or: [{ code: name.toUpperCase() }, { name: { $regex: name, $options: 'i' } }]
+        });
+        if (dept) {
+            response = responseBuilder.departmentLocation(dept, lang);
         } else {
-          try {
-            const route = await getRouteBetweenPoints(fromDept.latitude, fromDept.longitude, toDept.latitude, toDept.longitude);
-            answer = createVoiceResponse.navigation(fromDept.name, toDept.name, route, lang);
-          } catch {
-            const distance = Math.round(Math.sqrt(
-              Math.pow(toDept.latitude - fromDept.latitude, 2) +
-              Math.pow(toDept.longitude - fromDept.longitude, 2)
-            ) * 111000);
-            answer = createVoiceResponse.navigationFallback(fromDept.name, toDept.name, distance, lang);
-          }
+            const aiText = await generateText(`Where is ${name} in MMMUT? Answer in 1 sentence.`);
+            response = { speech: aiText, display: aiText };
         }
-      }
-      // === DEPARTMENT LOCATION ===
-      else if (/where|location|find|कहा|कहां|department|dept|विभाग/i.test(lower)) {
-        const codeMatch = lower.match(/\b(cse|ce|ee|me|ece|it|lib|can|adm|hos)\b/i);
-        let name = '';
-
-        if (codeMatch) {
-          name = codeMatch[1];
-        } else {
-          const nameMatch = lower.match(/(?:where is|find|location of|कहा है|कहां है)\s+(.+?)(?:\?|$)/i);
-          if (nameMatch) {
-            name = nameMatch[1].trim();
-          } else {
-            name = lower.replace(/where|is|location|find|department|dept|the|कहा|कहां|है/gi, '').trim();
-          }
-        }
-
-        if (name.length < 2) {
-          answer = lang === 'hi'
-            ? 'कृपया विभाग का नाम बताएं, जैसे CSE या Civil।'
-            : 'Please specify a department name, like CSE or Civil.';
-        } else {
-          const dept = await Department.findOne({
-            $or: [
-              { code: name.toUpperCase() },
-              { name: { $regex: `^${name}$`, $options: 'i' } }
-            ]
-          });
-
-          if (dept) {
-            answer = createVoiceResponse.departmentLocation(dept, lang);
-          } else {
-            answer = createVoiceResponse.notFound(name, lang);
-          }
-        }
-      }
-      // === STUDY MATERIALS ===
-      else if (/notes|study|material|नोट्स|पढ़ाई|सामग्री|resources/i.test(lower)) {
-        const deptMatch = lower.match(/(cse|civil|mechanical|electrical|ece|it|सीएसई|सिविल|मैकेनिकल)/i);
+    }
+    // 8. RESOURCES
+    else if (/notes|study|material|pdf/i.test(lower)) {
+        const deptMatch = lower.match(/(cse|civil|mechanical|electrical|ece|it|mca)/i);
         const deptName = deptMatch ? deptMatch[0].toUpperCase() : null;
-
-        const filter = deptName ? {
-          department: { $regex: `^${deptName}$`, $options: 'i' },
-          status: 'approved'
-        } : { status: 'approved' };
-
-        const resources = await Resource.find(filter).limit(5);
-
-        if (resources.length > 0) {
-          answer = createVoiceResponse.studyMaterials(deptName, resources.length, lang);
-        } else {
-          answer = createVoiceResponse.noMaterials(deptName, lang);
-        }
-      }
-      // === GEMINI FALLBACK (If no patterns matched OR DB failed) ===
-      if (!answer) {
-        const prompt = isHindi
-          ? `आप MMMUT कैंपस AI हैं। संक्षिप्त और स्पष्ट हिंदी में जवाब दें (2-3 वाक्य): "${qry}"`
-          : `You are MMMUT Campus AI. Give a brief, conversational answer in 2-3 sentences: "${qry}"`;
-        answer = await generateText(prompt);
-      }
+        const filter = deptName ? { department: { $regex: deptName, $options: 'i' } } : {};
+        const resources = await Resource.find(filter).limit(3);
+        
+        if (resources.length > 0) response = responseBuilder.studyMaterials(deptName || 'General', resources.length, resources, lang);
+        else response = responseBuilder.noMaterials(deptName || 'that department', lang);
+    }
+    // 9. FALLBACK (Gemini)
+    else {
+        const prompt = isHindi 
+            ? `MMMUT कैंपस AI के रूप में जवाब दें: "${qry}" (संक्षिप्त में)`
+            : `You are MMMUT Campus AI. Answer briefly (2 sentences): "${qry}"`;
+        
+        const aiText = await generateText(prompt);
+        const speechClean = aiText.replace(/\*\*/g, '').replace(/\[.*?\]/g, '');
+        response = { speech: speechClean, display: aiText };
     }
 
-    // === VOICE FILE GENERATION (GTTS) ===
-    const audioPath = await textToSpeech(answer, lang);
+    // === GENERATE VOICE ===
+    const audioPath = await textToSpeech(response.speech, lang);
+    if (!audioPath || !fs.existsSync(audioPath)) throw new Error('Voice generation failed');
 
-    if (!audioPath || !fs.existsSync(audioPath)) {
-      return next(new Error('Voice file generation failed'));
-    }
-
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', 'inline');
-
-    res.sendFile(audioPath, (err) => {
-      if (err) {
-        console.error('File send error:', err);
-        return next(new Error('Failed to send voice response'));
-      }
+    const filename = path.basename(audioPath);
+    res.json({
+        answer: response.display, 
+        audioUrl: `/voices/${filename}`
     });
 
   } catch (error) {

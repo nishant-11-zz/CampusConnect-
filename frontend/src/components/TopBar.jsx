@@ -18,8 +18,8 @@ const TopBar = () => {
 
     return (
         <div id="top-bar">
-            {/* Search Bar */}
-            <div className="search-container">
+            {/* Search Container with Glass Effect */}
+            <div className="search-container glass-effect">
                 <input
                     type="search"
                     id="search-bar"

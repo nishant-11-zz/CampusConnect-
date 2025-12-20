@@ -10,10 +10,12 @@ import MTechFaculty from './pages/Faculty/MTechFaculty';
 import MCAFaculty from './pages/Faculty/MCAFaculty';
 import PYPs from './pages/EduZone/PYPs';
 import VideoLectures from './pages/EduZone/VideoLectures';
+import Background from './components/Background';
 
 function App() {
   return (
     <Router>
+      <Background />
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Home />} />

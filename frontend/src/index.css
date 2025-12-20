@@ -1797,3 +1797,275 @@ body.hovering .cursor-dot {
   }
 }
 
+/* --- GLOBAL THEME: ANTI-GRAVITY --- */
+:root {
+  --accent-color: #00e5ff;
+  --glass-bg: rgba(16, 20, 30, 0.65); /* Dark transparent blue */
+  --glass-border: rgba(0, 229, 255, 0.2);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  color: #fff;
+  font-family: 'Orbitron', sans-serif; /* Tech font */
+}
+
+/* Make the main app container allow transparency */
+.app-container {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* --- GLASSMORPHISM CARDS --- */
+/* Apply this class to your Department Cards, Modals, and Navbar */
+.feature-card, 
+.navbar, 
+.modal-content, 
+.ai-content {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(12px); /* Blurs the particles behind */
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Hover Effect for Cards */
+.feature-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.4);
+  border-color: var(--accent-color);
+}
+
+/* Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #000;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--accent-color);
+  border-radius: 4px;
+}
+
+/* --- HOME PAGE TRANSPARENCY FIX --- */
+
+/* 1. Make the main wrapper completely invisible so background shows */
+.ai-home-container {
+  background: transparent !important;
+  box-shadow: none !important;
+  width: 100%;
+  height: 100%;
+  min-height: 80vh; /* Ensure it doesn't collapse */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 2. Make the center card 'Glass' (Semi-Transparent) */
+.ai-content {
+  background: rgba(12, 16, 25, 0.4) !important; /* Very sheer dark blue */
+  backdrop-filter: blur(8px); /* Blurs the stars behind it slightly */
+  border: 1px solid rgba(0, 229, 255, 0.15); /* Subtle cyan border */
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.5); /* Soft shadow for depth */
+  border-radius: 20px;
+  padding: 40px;
+  max-width: 700px;
+  width: 90%;
+  text-align: center;
+  position: relative;
+  z-index: 10;
+}
+
+/* 3. Ensure the text input area matches the glass theme */
+.ai-input-area {
+  background: transparent !important; /* Remove any solid box behind input */
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* 4. The actual input box style */
+.ai-text-input {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(0, 229, 255, 0.3) !important;
+  color: #fff !important;
+  backdrop-filter: blur(5px);
+}
+
+.ai-text-input:focus {
+  background: rgba(0, 0, 0, 0.5) !important;
+  border-color: #00e5ff !important;
+  box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+}
+
+/* --- TRANSPARENT & GLASS NAVBAR --- */
+
+/* 1. Default State (Top of Page) */
+#main-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1000;
+  padding: 1.2rem 5%; /* Spacing */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  
+  /* TRANSPARENCY MAGIC */
+  background: transparent; /* Completely see-through */
+  backdrop-filter: none;   /* No blur yet */
+  border-bottom: 1px solid transparent; /* No border yet */
+  box-shadow: none;
+  
+  transition: all 0.4s ease; /* Smooth transition */
+}
+
+/* 2. Scrolled State (When user scrolls down) */
+#main-header.scrolled {
+  padding: 0.8rem 5%; /* Shrink slightly */
+  
+  /* GLASS EFFECT */
+  background: rgba(10, 14, 23, 0.6); /* 60% opacity dark blue */
+  backdrop-filter: blur(12px);       /* Blurs the stars behind it */
+  border-bottom: 1px solid rgba(0, 229, 255, 0.15); /* Glowing cyan line */
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* 3. Navigation Links */
+#main-nav ul li a {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 1rem;
+  padding: 8px 12px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+#main-nav ul li a:hover {
+  color: var(--accent-color);
+  background: rgba(0, 229, 255, 0.1);
+  text-shadow: 0 0 10px var(--accent-color);
+}
+
+/* 4. Dropdown Menu (Glass Style) */
+.dropdown-menu {
+  background: rgba(10, 14, 23, 0.9) !important; /* Slightly more solid for readability */
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+/* 5. Mobile Menu (Full Glass) */
+@media (max-width: 900px) {
+  #main-nav {
+    background: rgba(10, 14, 23, 0.95); /* Darker glass for mobile menu */
+    backdrop-filter: blur(20px);
+  }
+}
+
+
+/* ================================================= */
+/* === 1. TOP BAR (Search) - Fixed Row 1 === */
+/* ================================================= */
+#top-bar {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100%;
+  height: 50px; /* Exact height */
+  z-index: 1100;
+  
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0 5%;
+  
+  background: rgba(10, 14, 23, 0.9);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.1);
+}
+
+/* ================================================= */
+/* === 2. NAVBAR - Fixed Row 2 === */
+/* ================================================= */
+#main-header {
+  position: fixed !important;
+  top: 50px !important; /* Pushed down by Top Bar */
+  left: 0 !important;
+  width: 100%;
+  height: 80px; /* Exact height */
+  z-index: 1000;
+  
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 5%;
+  
+  background: rgba(10, 14, 23, 0.6); /* Transparent Glass */
+  backdrop-filter: blur(15px);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+/* ================================================= */
+/* === 3. PAGE CONTENT (The "About" Page Fix) === */
+/* ================================================= */
+/* We target 'main' directly because that is where your text is */
+main {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  
+  /* MATH: 
+     TopBar (50px) + Navbar (80px) = 130px.
+     + 50px Gap = 180px Total Padding.
+  */
+  padding-top: 180px !important; 
+  padding-bottom: 50px;
+  padding-left: 5%;
+  padding-right: 5%;
+}
+
+/* Also ensure the wrapper doesn't collapse */
+.app-container {
+  min-height: 100vh;
+  width: 100%;
+  position: relative;
+}
+
+/* ================================================= */
+/* === 4. HOME PAGE CENTERING FIX === */
+/* ================================================= */
+.ai-home-container {
+  /* We remove the top padding calculation for the home page 
+     so it centers in the REMAINING view height */
+  min-height: calc(100vh - 130px) !important;
+  margin-top: 130px; /* Push it down physically */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+/* ================================================= */
+/* === 5. MOBILE FIX === */
+/* ================================================= */
+@media (max-width: 900px) {
+  #top-bar { justify-content: center; }
+  
+  /* Mobile menu starts below header stack */
+  #main-nav {
+    top: 130px !important; 
+    height: calc(100vh - 130px);
+    padding-top: 40px;
+  }
+}
