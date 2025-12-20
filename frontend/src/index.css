@@ -882,7 +882,6 @@ main {
 /* 1. Hide the default cursor everywhere */
 * {
   cursor: none !important;
-  /* Forces default cursor to disappear */
 }
 
 /* 2. The Center Dot (Sharp Pointer) */
@@ -890,15 +889,16 @@ main {
   width: 8px;
   height: 8px;
   background-color: var(--accent-color);
-  /* Electric Blue */
   position: fixed;
   top: 0;
   left: 0;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  z-index: 99999;
+  
+  /* UPDATE: Make this higher than the modal (which is 99999) */
+  z-index: 100001; 
+  
   pointer-events: none;
-  /* Allows clicks to pass through */
   box-shadow: 0 0 10px var(--accent-color);
 }
 
@@ -907,14 +907,15 @@ main {
   width: 40px;
   height: 40px;
   border: 2px solid var(--accent-color);
-  /* Electric Blue Border */
   position: fixed;
   top: 0;
   left: 0;
   transform: translate(-50%, -50%);
   border-radius: 50%;
-  z-index: 99998;
-  /* Just below the dot */
+  
+  /* UPDATE: Make this just below the dot but above the modal */
+  z-index: 100000; 
+  
   pointer-events: none;
   transition: width 0.2s, height 0.2s, background-color 0.2s, border-color 0.2s;
 }
@@ -1795,3 +1796,4 @@ body.hovering .cursor-dot {
     transform: translate(-50%, -50%) rotate(360deg);
   }
 }
+

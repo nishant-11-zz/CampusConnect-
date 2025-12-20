@@ -59,7 +59,7 @@ const Home = () => {
         setIsProcessing(true);
 
         try {
-            const response = await fetch('http://localhost:5000/api/ai/query/voice', {
+const response = await fetch('/api/ai/query/voice', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ qry: query })
